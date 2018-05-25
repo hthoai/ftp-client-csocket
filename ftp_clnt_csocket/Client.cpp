@@ -68,8 +68,11 @@ bool Client::connect(wstring host, unsigned int port)
 		wcout << temp << endl;
 		return true;
 	}
-
-	return false;
+	else
+	{
+		cout << ">ftp: connect :Connection timeout\n";
+		return false;
+	}
 }
 
 
@@ -77,91 +80,74 @@ bool Client::login(string host)
 {
 	wstring w_host(host.begin(), host.end());
 	hostIPaddr = w_host;
-	connect(hostIPaddr, 21);
 
-	char buf[BUFSIZ + 1];
-	int tmpres, size, status;
-	/*
-	Connection Establishment
-	120
-	220
-	220
-	421
-	Login
-	USER
-	230
-	530
-	500, 501, 421
-	331, 332
-	PASS
-	230
-	202
-	530
-	500, 501, 503, 421
-	332
-	*/
-	char * str;
-	int codeftp;
-	//How to know the end of welcome message:
-	//http://stackoverflow.com/questions/13082538/how-to-know-the-end-of-ftp-welcome-message
-	memset(buf, 0, sizeof buf);
-	while ((tmpres = ClientSocket.Receive(buf, BUFSIZ, 0)) > 0) {
+	if (connect(hostIPaddr, 21) == true)
+	{
+		char buf[BUFSIZ + 1];
+		int tmpres, size, status;
+		char * str;
+		int codeftp;
+		//How to know the end of welcome message:
+		//http://stackoverflow.com/questions/13082538/how-to-know-the-end-of-ftp-welcome-message
+		memset(buf, 0, sizeof buf);
+		while ((tmpres = ClientSocket.Receive(buf, BUFSIZ, 0)) > 0) {
+			sscanf(buf, "%d", &codeftp);
+			printf("%s", buf);
+			if (codeftp != 220) //120, 240, 421: something wrong
+			{
+				replylogcode(codeftp);
+				//exit(1);
+			}
+
+			str = strstr(buf, "220");//Why ???
+			if (str != NULL) {
+				break;
+			}
+			memset(buf, 0, tmpres);
+		}
+
+		//Send Username
+		char info[50];
+		cout << "User (";
+		wcout << hostIPaddr;
+		cout << ":(none)): ";
+		memset(buf, 0, sizeof buf);
+		scanf("%s", info);
+
+		sprintf(buf, "USER %s\r\n", info);
+		tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+
+		memset(buf, 0, sizeof buf);
+		tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
+
 		sscanf(buf, "%d", &codeftp);
-		printf("%s", buf);
-		if (codeftp != 220) //120, 240, 421: something wrong
+		if (codeftp != 331)
 		{
 			replylogcode(codeftp);
-			exit(1);
+			//exit(1);
 		}
+		printf("%s", buf);
 
-		str = strstr(buf, "220");//Why ???
-		if (str != NULL) {
-			break;
+		//Send Password
+		memset(info, 0, sizeof info);
+		printf("Password: ");
+		memset(buf, 0, sizeof buf);
+		scanf("%s", info);
+
+		sprintf(buf, "PASS %s\r\n", info);
+		tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+
+		memset(buf, 0, sizeof buf);
+		tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
+
+		sscanf(buf, "%d", &codeftp);
+		if (codeftp != 230)
+		{
+			replylogcode(codeftp);
+			//exit(1);
 		}
-		memset(buf, 0, tmpres);
+		printf("%s", buf);
 	}
-
-	//Send Username
-	char info[50];
-	cout << "User (";
-	wcout << hostIPaddr;
-	cout << ":(none)): ";
-	memset(buf, 0, sizeof buf);
-	scanf("%s", info);
-
-	sprintf(buf, "USER %s\r\n", info);
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-
-	sscanf(buf, "%d", &codeftp);
-	if (codeftp != 331)
-	{
-		replylogcode(codeftp);
-		exit(1);
-	}
-	printf("%s", buf);
-
-	//Send Password
-	memset(info, 0, sizeof info);
-	printf("Password: ");
-	memset(buf, 0, sizeof buf);
-	scanf("%s", info);
-
-	sprintf(buf, "PASS %s\r\n", info);
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-
-	sscanf(buf, "%d", &codeftp);
-	if (codeftp != 230)
-	{
-		replylogcode(codeftp);
-		exit(1);
-	}
-	printf("%s", buf);
 
 	return true;
 }
