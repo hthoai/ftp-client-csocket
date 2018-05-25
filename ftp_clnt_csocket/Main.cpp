@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include "ftp_clnt_csocket.h"
+#include "Client.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW

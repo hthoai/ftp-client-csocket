@@ -1,9 +1,6 @@
 #pragma once
 #include "stdafx.h"
 
-#define A "open"
-#define B "ls"
-#define C "dir"
 
 class Client
 {
