@@ -23,6 +23,7 @@ void Client::play()
 	while (true)
 	{
 		cout << "ftp> ";
+		rewind(stdin);
 		getline(cin, input);
 
 		if (input == "quit")
@@ -58,6 +59,37 @@ void Client::command(const string cmd, const string path)
 }
 
 
+bool Client::transferCMD(const string cmd, const string infor)
+{
+	int tmpres;
+	int codeftp;
+	char buf[BUFSIZ + 1];
+
+	memset(buf, 0, sizeof buf);
+	if (infor == "")
+		sprintf(buf, "%s \r\n", cmd.c_str());
+	else
+		sprintf(buf, "%s %s \r\n", cmd.c_str(), infor.c_str());
+
+	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+
+	memset(buf, 0, tmpres);
+	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
+	sscanf(buf, "%d", &codeftp);
+
+	if (codeftp == 200 || codeftp == 230 || codeftp == 331 || codeftp == 150)
+	{
+		printf("%s", buf);
+		return true;
+	}
+	else
+	{
+		replylogcode(codeftp);
+		return false;
+	}
+}
+
+
 bool Client::connect(wstring host, unsigned int port)
 {
 	LPCTSTR temp = host.c_str();
@@ -68,11 +100,8 @@ bool Client::connect(wstring host, unsigned int port)
 		wcout << temp << endl;
 		return true;
 	}
-	else
-	{
-		cout << ">ftp: connect :Connection timeout\n";
-		return false;
-	}
+
+	return false;
 }
 
 
@@ -80,74 +109,76 @@ bool Client::login(string host)
 {
 	wstring w_host(host.begin(), host.end());
 	hostIPaddr = w_host;
+	connect(hostIPaddr, 21);
 
-	if (connect(hostIPaddr, 21) == true)
-	{
-		char buf[BUFSIZ + 1];
-		int tmpres, size, status;
-		char * str;
-		int codeftp;
-		//How to know the end of welcome message:
-		//http://stackoverflow.com/questions/13082538/how-to-know-the-end-of-ftp-welcome-message
-		memset(buf, 0, sizeof buf);
-		while ((tmpres = ClientSocket.Receive(buf, BUFSIZ, 0)) > 0) {
-			sscanf(buf, "%d", &codeftp);
-			printf("%s", buf);
-			if (codeftp != 220) //120, 240, 421: something wrong
-			{
-				replylogcode(codeftp);
-				//exit(1);
-			}
-
-			str = strstr(buf, "220");//Why ???
-			if (str != NULL) {
-				break;
-			}
-			memset(buf, 0, tmpres);
-		}
-
-		//Send Username
-		char info[50];
-		cout << "User (";
-		wcout << hostIPaddr;
-		cout << ":(none)): ";
-		memset(buf, 0, sizeof buf);
-		scanf("%s", info);
-
-		sprintf(buf, "USER %s\r\n", info);
-		tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-		memset(buf, 0, sizeof buf);
-		tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-
+	char buf[BUFSIZ + 1];
+	int tmpres, size, status;
+	char * str;
+	int codeftp;
+	//How to know the end of welcome message:
+	//http://stackoverflow.com/questions/13082538/how-to-know-the-end-of-ftp-welcome-message
+	memset(buf, 0, sizeof buf);
+	while ((tmpres = ClientSocket.Receive(buf, BUFSIZ, 0)) > 0) {
 		sscanf(buf, "%d", &codeftp);
-		if (codeftp != 331)
+		printf("%s", buf);
+		if (codeftp != 220) //120, 240, 421: something wrong
 		{
 			replylogcode(codeftp);
-			//exit(1);
+			exit(1);
 		}
-		printf("%s", buf);
 
-		//Send Password
-		memset(info, 0, sizeof info);
-		printf("Password: ");
-		memset(buf, 0, sizeof buf);
-		scanf("%s", info);
-
-		sprintf(buf, "PASS %s\r\n", info);
-		tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-		memset(buf, 0, sizeof buf);
-		tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-
-		sscanf(buf, "%d", &codeftp);
-		if (codeftp != 230)
-		{
-			replylogcode(codeftp);
-			//exit(1);
+		str = strstr(buf, "220");//Why ???
+		if (str != NULL) {
+			break;
 		}
-		printf("%s", buf);
+		memset(buf, 0, tmpres);
 	}
+
+	//Send Username
+	char info[50];
+	cout << "User (";
+	wcout << hostIPaddr;
+	cout << ":(none)): ";
+	memset(buf, 0, sizeof buf);
+	scanf("%s", info);
+
+	transferCMD("USER", info);
+
+	/*sprintf(buf, "USER %s\r\n", info);
+	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+
+	memset(buf, 0, sizeof buf);
+	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
+
+	sscanf(buf, "%d", &codeftp);
+	if (codeftp != 331)
+	{
+		replylogcode(codeftp);
+		exit(1);
+	}
+	printf("%s", buf);*/
+
+	//Send Password
+	memset(info, 0, sizeof info);
+	printf("Password: ");
+	memset(buf, 0, sizeof buf);
+	scanf("%s", info);
+
+	transferCMD("PASS", info);
+
+	/*sprintf(buf, "PASS %s\r\n", info);
+	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+
+	memset(buf, 0, sizeof buf);
+	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
+
+	sscanf(buf, "%d", &codeftp);
+	if (codeftp != 230)
+	{
+		replylogcode(codeftp);
+		exit(1);
+	}
+	printf("%s", buf);*/
 
 	return true;
 }
@@ -160,9 +191,9 @@ void Client::transferInit(CSocket &dsocket, const string path)
 	char buf[BUFSIZ + 1];
 
 	CString sockIP; //Type of host IP is CString
-	//unsigned int clientDataPort;
+					//unsigned int clientDataPort;
 
-	//Get IP and port 
+					//Get IP and port 
 	ClientSocket.GetSockName(sockIP, clientPort);
 	const size_t newsize = sockIP.GetLength() + 1;
 	char* IPstr = new char[newsize];
@@ -190,24 +221,24 @@ void Client::transferInit(CSocket &dsocket, const string path)
 
 	/*if (cmd == "ls")
 	{
-		if (path == "")
-			sprintf(buf, "NLST \r\n");
-		else
-			sprintf(buf, "NLST %s \r\n", path.c_str());
+	if (path == "")
+	sprintf(buf, "NLST \r\n");
+	else
+	sprintf(buf, "NLST %s \r\n", path.c_str());
 	}
 	else if (cmd == "dir")
 	{
-		if (path == "")
-			sprintf(buf, "LIST \r\n");
-		else
-			sprintf(buf, "LIST %s \r\n", path.c_str());
+	if (path == "")
+	sprintf(buf, "LIST \r\n");
+	else
+	sprintf(buf, "LIST %s \r\n", path.c_str());
 	}
 	else if (cmd == "get")
-		sprintf(buf, "RETR %s \r\n", path.c_str());
+	sprintf(buf, "RETR %s \r\n", path.c_str());
 	else if (cmd == "put")
 	{
-		string filename = getFileName(path);
-		sprintf(buf, "STOR %s \r\n", filename.c_str());
+	string filename = getFileName(path);
+	sprintf(buf, "STOR %s \r\n", filename.c_str());
 	}
 
 	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
@@ -230,7 +261,12 @@ bool Client::lsdir(const string cmd, const string path)
 
 	transferInit(dsocket, path);
 
-	memset(buf, 0, sizeof buf);
+	if (cmd == "ls")
+		transferCMD("NLST", path);
+	else
+		transferCMD("LIST", path);
+
+	/*memset(buf, 0, sizeof buf);
 	if (cmd == "ls")
 	{
 		if (path == "")
@@ -251,11 +287,11 @@ bool Client::lsdir(const string cmd, const string path)
 	memset(buf, 0, tmpres);
 	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
 	sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);
+	printf("%s", buf);*/
 
 	dsocket.Accept(connector);
 
-	memset(buf, 0, tmpres);
+	memset(buf, 0, sizeof buf);
 	while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
 	{
 		sscanf(buf, "%d", &codeftp);
@@ -279,14 +315,16 @@ bool Client::get(const string path)
 
 	transferInit(dsocket, path);
 
-	memset(buf, 0, sizeof buf);
+	transferCMD("RETR", path);
+
+	/*memset(buf, 0, sizeof buf);
 	sprintf(buf, "RETR %s \r\n", path.c_str());
 	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
 
 	memset(buf, 0, sizeof buf);
 	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
 	sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);
+	printf("%s", buf);*/
 
 	dsocket.Accept(connector);
 
@@ -327,15 +365,15 @@ bool Client::put(const string path)
 	transferInit(dsocket, path);
 
 	string filename = getFileName(path);
-	cout << filename << endl;
-	memset(buf, 0, sizeof buf);
+	transferCMD("STOR", filename);
+	/*memset(buf, 0, sizeof buf);
 	sprintf(buf, "STOR %s \r\n", filename.c_str());
 	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
 
 	memset(buf, 0, sizeof buf);
 	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
 	sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);
+	printf("%s", buf);*/
 
 	dsocket.Accept(connector);
 

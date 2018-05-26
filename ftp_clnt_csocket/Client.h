@@ -14,6 +14,7 @@ public:
 
 	void play();
 	void command(const string cmd, const string path);
+	bool transferCMD(const string cmd, const string infor);
 	bool connect(wstring host, unsigned int port);
 	bool login(string host);
 	void transferInit(CSocket &dsocket, const string path);
