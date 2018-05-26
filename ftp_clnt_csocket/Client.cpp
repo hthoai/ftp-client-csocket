@@ -67,9 +67,9 @@ bool Client::transferCMD(const string cmd, const string infor)
 
 	memset(buf, 0, sizeof buf);
 	if (infor == "")
-		sprintf(buf, "%s \r\n", cmd.c_str());
+		sprintf(buf, "%s\r\n", cmd.c_str());
 	else
-		sprintf(buf, "%s %s \r\n", cmd.c_str(), infor.c_str());
+		sprintf(buf, "%s %s\r\n", cmd.c_str(), infor.c_str());
 
 	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
 
@@ -347,10 +347,17 @@ bool Client::get(const string path)
 
 	memset(buf, 0, sizeof buf);
 	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	//sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);
-
-	return true;
+	sscanf(buf, "%d", &codeftp);
+	if (codeftp == 200 || codeftp == 150 || codeftp == 226)
+	{
+		printf("%s", buf);
+		return true;
+	}
+	else
+	{
+		replylogcode(codeftp);
+		return false;
+	}
 }
 
 
@@ -396,10 +403,17 @@ bool Client::put(const string path)
 
 	memset(buf, 0, sizeof buf);
 	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	//sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);
-
-	return true;
+	sscanf(buf, "%d", &codeftp);
+	if (codeftp == 200 || codeftp == 150 || codeftp == 226)
+	{
+		printf("%s", buf);
+		return true;
+	}
+	else
+	{
+		replylogcode(codeftp);
+		return false;
+	}
 }
 
 
@@ -409,14 +423,18 @@ bool Client::mget(const string pathRAW)
 	vector<string>paths((istream_iterator<string>(iss)), istream_iterator<string>());
 	//REF: https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
 
-	for (int i = 0; i < paths.size(); i++)
-	{
-		cout << paths[i];
-	}
+	string ucmd;
+
+	transferCMD("TYPE", "I");
 
 	for (int i = 0; i < paths.size(); i++)
 	{
-		get(paths[i]);
+		printf("mget %s? ", paths[i].c_str());
+		rewind(stdin);
+		getline(cin, ucmd);
+
+		if (ucmd == "" || ucmd == "Y" || ucmd == "y")
+			get(paths[i]);
 	}
 
 	return true;
@@ -448,6 +466,8 @@ void replylogcode(int code)
 	case 530:
 		printf("Permission denied\nLogin failed.");
 		break;
+	default:
+		printf("It's error .__.");
 	}
 	printf("\n");
 }
