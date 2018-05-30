@@ -29,6 +29,7 @@ public:
 	bool mget(const string pathRAW);
 	bool mput(const string pathRAW);
 	bool del(const string path);
+	bool mdel(const string pathRAW);
 	bool pwd();
 	bool cd(const string path);
 	bool lcd(const string path);
@@ -38,3 +39,4 @@ public:
 
 void replylogcode(int code);
 string getFileName(string path);
+void splitPaths(string pathRAW, vector<string>& paths);

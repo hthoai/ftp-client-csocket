@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "Client.h"
 
 
@@ -62,6 +62,8 @@ bool Client::command(const string cmd, const string path)
 		mput(path);
 	else if (cmd == "delete")
 		del(path);
+	else if (cmd == "mdelete")
+		mdel(path);
 	else if (cmd == "pwd")
 		pwd();
 	else if (cmd == "cd")
@@ -72,6 +74,8 @@ bool Client::command(const string cmd, const string path)
 		rmdir(path);
 	else if (cmd == "quit" || cmd == "exit" || cmd == "close")
 		return quitexit();
+	else if (cmd == "")
+		return true;
 	else
 		cout << "Invalid command.\n";
 
@@ -105,6 +109,8 @@ bool Client::transferCMD(const string cmd, const string infor)
 	}
 	else if (codeftp == 550)
 		printf("%s", buf);
+	else if (codeftp == 530)
+		printf("%sLogin failed.\n", buf);
 	else
 		replylogcode(codeftp);
 
@@ -119,11 +125,14 @@ bool Client::connect(wstring host, unsigned int port)
 	if (ClientSocket.Connect(temp, port) != 0)
 	{
 		cout << "Connected to ";
-		wcout << temp << endl;
+		wcout << temp << ".\n";
 		return true;
 	}
-
-	return false;
+	else
+	{
+		cout << "> ftp: connect :ICMP network unreachable\n";
+		return false;
+	}
 }
 
 
@@ -131,7 +140,8 @@ bool Client::login(string host)
 {
 	wstring w_host(host.begin(), host.end());
 	hostIPaddr = w_host;
-	connect(hostIPaddr, 21);
+	if (connect(hostIPaddr, 21) == false)
+		return false;
 
 	char buf[BUFSIZ + 1];
 	int tmpres, size, status;
@@ -320,7 +330,7 @@ bool Client::lsdir(const string cmd, const string path)
 
 	dsocket.Close();
 
-	return true;
+	return afterTransfer();
 }
 
 
@@ -338,7 +348,7 @@ bool Client::get(const string path)
 
 	//Create file to write into
 	string filename = getFileName(path);
-	filename = "D:/" + filename;
+	//filename = "D:/" + filename;
 	ofstream downfile(filename, ios::binary);
 
 	if (mode == ACTIVE)
@@ -348,7 +358,7 @@ bool Client::get(const string path)
 		memset(buf, 0, sizeof buf);
 		while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
 		{
-			downfile.write(buf, sizeof buf);
+			downfile.write(buf, tmpres);
 			memset(buf, 0, tmpres);
 		}
 
@@ -373,8 +383,17 @@ bool Client::get(const string path)
 
 bool Client::put(const string path)
 {
+	string t_path = path;
+	//Delete " at begin and end position if exists
+	if (t_path[0] == 34) //"
+	{
+		t_path.erase(0, 1);
+		int lenPath = t_path.length();
+		t_path.erase(lenPath - 1, lenPath);
+	}
+
 	//Create file to read
-	ifstream upfile(path, ios::binary);
+	ifstream upfile(t_path, ios::binary);
 	//Check if file exists
 	if (upfile.good() == false)
 	{
@@ -427,11 +446,9 @@ bool Client::put(const string path)
 
 bool Client::mget(const string pathRAW)
 {
-	istringstream iss(pathRAW);
-	vector<string>paths((istream_iterator<string>(iss)), istream_iterator<string>());
-	//REF: https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
-
 	string ucmd;
+	vector<string>paths;
+	splitPaths(pathRAW, paths);
 
 	//transferCMD("TYPE", "I");
 
@@ -451,11 +468,9 @@ bool Client::mget(const string pathRAW)
 
 bool Client::mput(const string pathRAW)
 {
-	istringstream iss(pathRAW);
-	vector<string>paths((istream_iterator<string>(iss)), istream_iterator<string>());
-	//REF: https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
-
 	string ucmd;
+	vector<string>paths;
+	splitPaths(pathRAW, paths);
 
 	//transferCMD("TYPE", "I");
 
@@ -476,6 +491,27 @@ bool Client::mput(const string pathRAW)
 bool Client::del(const string path)
 {
 	transferCMD("DELE", path);
+
+	return true;
+}
+
+bool Client::mdel(const string pathRAW)
+{
+	string ucmd;
+	vector<string>paths;
+	splitPaths(pathRAW, paths);
+
+	//transferCMD("TYPE", "I");
+
+	for (int i = 0; i < paths.size(); i++)
+	{
+		printf("mdelete %s? ", paths[i].c_str());
+		rewind(stdin);
+		getline(cin, ucmd);
+
+		if (ucmd == "" || ucmd == "Y" || ucmd == "y")
+			del(paths[i]);
+	}
 
 	return true;
 }
@@ -548,6 +584,8 @@ bool Client::quitexit()
 void replylogcode(int code)
 {
 	switch (code) {
+	case 421:
+		printf("No-transfer-time exceeded. Closing control connection.");
 	case 451:
 		printf("Can't remove directory");
 		break;
@@ -566,9 +604,6 @@ void replylogcode(int code)
 		break;
 	case 503:
 		printf("Bad sequence of commands.");
-		break;
-	case 530:
-		printf("Permission denied\nLogin failed.");
 		break;
 	default:
 		printf("It's error .__.");
@@ -593,4 +628,28 @@ string getFileName(string path)
 		filename.erase(lenFN, lenFN + 1);
 
 	return filename;
+}
+
+
+void splitPaths(string pathRAW, vector<string>& paths)
+{
+	int pos = 0;
+	int i = 0;
+
+	paths.resize(0);
+	while (i < pathRAW.size() && pos != -1)
+	{
+		if (pathRAW[i] == 34) //"
+		{
+			pos = pathRAW.find_first_of(34, i + 1);
+			paths.push_back(pathRAW.substr(i + 1, pos - i - 1));
+			i = pos + 2;
+		}
+		else
+		{
+			pos = pathRAW.find(" ", i);
+			paths.push_back(pathRAW.substr(i, pos - i - 1));
+			i = pos + 1;
+		}
+	}
 }
