@@ -46,27 +46,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				return FALSE;
 			}
 
-			/*string path, cmd, input;
-			getline(cin, input);
-			cmd = input.substr(0, input.find(" "));
-			path = input.substr(input.find(" ") + 1);
-			cout << endl << cmd << endl << path << endl;
-
-			cout << getFileName(path) << endl;*/
-			/*Client H;
-			H.play();*/
-			//H.login();
-			//H.lsdir("ls","");
-			//H.get("Tam9/neuanhdi.mp3");
-			//H.put("D:/by.mp3");
-			string in;
-			getline(cin, in);
-			istringstream iss(in);
-			vector<string>paths((istream_iterator<string>(iss)), istream_iterator<string>());
-			for (int i = 0; i < paths.size(); i++)
-			{
-				cout << paths[i] << "|";
-			}
+			Client H;
+			H.play();
 		}
 	}
 	else

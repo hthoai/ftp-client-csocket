@@ -36,12 +36,5 @@ using namespace std;
 #include <sstream>
 #include <istream>
 #include <iterator>
-#include <map>
 
 // TODO: reference additional headers your program requires here
-
-map<string, string>serverCMD{
-{"ls","LIST"},
-{"dir","NLST"},
-{"get","RETR"},
-{"put","STOR"}};

@@ -7,6 +7,7 @@ Client::Client()
 	ClientSocket.Create();
 	srand(time(NULL));
 	clientDataPort = rand() % 40000 + 1024;
+	mode = ACTIVE;
 }
 
 
@@ -22,28 +23,31 @@ void Client::play()
 
 	while (true)
 	{
-		cout << "ftp> ";
+		if (mode == ACTIVE)
+			cout << "ftp> ";
+		else
+			cout << "ftp-pasv> ";
 		rewind(stdin);
 		getline(cin, input);
 
-		if (input == "quit")
+		cmd = input.substr(0, input.find(" "));
+		path = input.substr(input.find(" ") + 1);
+		if (cmd.length() == input.length())
+			path = "";
+
+		if (command(cmd, path) == false)
 			break;
-		else
-		{
-			cmd = input.substr(0, input.find(" "));
-			path = input.substr(input.find(" ") + 1);
-			if (cmd.length() == input.length())
-				path = "";
-			command(cmd, path);
-		}
+
 	}
 }
 
 
-void Client::command(const string cmd, const string path)
+bool Client::command(const string cmd, const string path)
 {
 	if (cmd == "open")
 		login(path); //host
+	else if (cmd == "quote")
+		changeMode(path);
 	else if (cmd == "ls")
 		lsdir("ls", path);
 	else if (cmd == "dir")
@@ -54,8 +58,24 @@ void Client::command(const string cmd, const string path)
 		put(path);
 	else if (cmd == "mget")
 		mget(path);
+	else if (cmd == "mput")
+		mput(path);
+	else if (cmd == "delete")
+		del(path);
+	else if (cmd == "pwd")
+		pwd();
+	else if (cmd == "cd")
+		cd(path);
+	else if (cmd == "lcd")
+		lcd(path);
+	else if (cmd == "rmdir")
+		rmdir(path);
+	else if (cmd == "quit" || cmd == "exit" || cmd == "close")
+		return quitexit();
 	else
 		cout << "Invalid command.\n";
+
+	return true;
 }
 
 
@@ -77,16 +97,18 @@ bool Client::transferCMD(const string cmd, const string infor)
 	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
 	sscanf(buf, "%d", &codeftp);
 
-	if (codeftp == 200 || codeftp == 230 || codeftp == 331 || codeftp == 150)
+	if (codeftp == 200 || codeftp == 230 || codeftp == 331 || codeftp == 150 || codeftp == 227 ||
+		codeftp == 257 || codeftp == 250 || codeftp == 221)
 	{
 		printf("%s", buf);
 		return true;
 	}
+	else if (codeftp == 550)
+		printf("%s", buf);
 	else
-	{
 		replylogcode(codeftp);
-		return false;
-	}
+
+	return false;
 }
 
 
@@ -144,20 +166,6 @@ bool Client::login(string host)
 
 	transferCMD("USER", info);
 
-	/*sprintf(buf, "USER %s\r\n", info);
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-
-	sscanf(buf, "%d", &codeftp);
-	if (codeftp != 331)
-	{
-		replylogcode(codeftp);
-		exit(1);
-	}
-	printf("%s", buf);*/
-
 	//Send Password
 	memset(info, 0, sizeof info);
 	printf("Password: ");
@@ -166,21 +174,18 @@ bool Client::login(string host)
 
 	transferCMD("PASS", info);
 
-	/*sprintf(buf, "PASS %s\r\n", info);
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-
-	sscanf(buf, "%d", &codeftp);
-	if (codeftp != 230)
-	{
-		replylogcode(codeftp);
-		exit(1);
-	}
-	printf("%s", buf);*/
-
 	return true;
+}
+
+
+void Client::changeMode(const string path)
+{
+	if (path == "pasv")
+		mode = PASSIVE;
+	else if (path == "acti")
+		mode = ACTIVE;
+	else
+		printf("Syntax error.\n");
 }
 
 
@@ -190,65 +195,87 @@ void Client::transferInit(CSocket &dsocket, const string path)
 	int codeftp;
 	char buf[BUFSIZ + 1];
 
-	CString sockIP; //Type of host IP is CString
-					//unsigned int clientDataPort;
-
-					//Get IP and port 
-	ClientSocket.GetSockName(sockIP, clientPort);
-	const size_t newsize = sockIP.GetLength() + 1;
-	char* IPstr = new char[newsize];
-	CStringA IP_Cstr = (CStringA)sockIP;
-	strcpy_s(IPstr, newsize, IP_Cstr);
-
-	//Port command's arguments
-	clientDataPort++;
-	int p1 = clientDataPort / 256;
-	int p2 = clientDataPort % 256;
-	int a, b, c, d;
-
-	sscanf(IPstr, "%d.%d.%d.%d", &a, &b, &c, &d);
-	sprintf(buf, "PORT %d,%d,%d,%d,%d,%d\r\n", a, b, c, d, p1, p2);
-	LPCTSTR hostIP = hostIPaddr.c_str();
-	dsocket.Create(clientDataPort, SOCK_STREAM, hostIP);
-	dsocket.Listen();
-
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	//sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);
-	//memset(buf, 0, sizeof buf);
-
-	/*if (cmd == "ls")
+	if (mode == ACTIVE)
 	{
-	if (path == "")
-	sprintf(buf, "NLST \r\n");
-	else
-	sprintf(buf, "NLST %s \r\n", path.c_str());
-	}
-	else if (cmd == "dir")
-	{
-	if (path == "")
-	sprintf(buf, "LIST \r\n");
-	else
-	sprintf(buf, "LIST %s \r\n", path.c_str());
-	}
-	else if (cmd == "get")
-	sprintf(buf, "RETR %s \r\n", path.c_str());
-	else if (cmd == "put")
-	{
-	string filename = getFileName(path);
-	sprintf(buf, "STOR %s \r\n", filename.c_str());
-	}
+		CString sockIP; //Type of host IP is CString
 
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+		//Get IP and port 
+		ClientSocket.GetSockName(sockIP, clientPort);
+		const size_t newsize = sockIP.GetLength() + 1;
+		char* IPstr = new char[newsize];
+		CStringA IP_Cstr = (CStringA)sockIP;
+		strcpy_s(IPstr, newsize, IP_Cstr);
+
+		//Port command's arguments
+		clientDataPort++;
+		int p1 = clientDataPort / 256;
+		int p2 = clientDataPort % 256;
+		int a, b, c, d;
+
+		sscanf(IPstr, "%d.%d.%d.%d", &a, &b, &c, &d);
+		sprintf(buf, "PORT %d,%d,%d,%d,%d,%d\r\n", a, b, c, d, p1, p2);
+		LPCTSTR hostIP = hostIPaddr.c_str();
+		dsocket.Create(clientDataPort, SOCK_STREAM, hostIP);
+		dsocket.Listen();
+
+		tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+		memset(buf, 0, sizeof buf);
+		tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
+
+		sscanf(buf, "%d", &codeftp);
+		if (codeftp == 150 || codeftp == 200)
+			printf("%s", buf);
+		else
+			replylogcode(codeftp);
+	}
+	else //PASSIVE
+	{
+		memset(buf, 0, sizeof buf);
+		sprintf(buf, "PASV\r\n");
+
+		tmpres = ClientSocket.Send(buf, strlen(buf), 0);
+
+		memset(buf, 0, tmpres);
+		tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
+		sscanf(buf, "%d", &codeftp);
+
+		if (codeftp != 227)
+			replylogcode(codeftp);
+		else
+		{
+			int a, b, c, d, p1, p2;
+			int serverDataPort;
+
+			sscanf(buf, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\r\n", &a, &b, &c, &d, &p1, &p2);
+			serverDataPort = p1 * 256 + p2;
+
+			LPCTSTR hostIP = hostIPaddr.c_str();
+			dsocket.Create();
+			dsocket.Connect(hostIP, serverDataPort);
+		}
+	}
+}
+
+
+bool Client::afterTransfer()
+{
+	int tmpres;
+	int codeftp;
+	char buf[BUFSIZ + 1];
 
 	memset(buf, 0, sizeof buf);
 	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
 	sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);
-
-	dsocket.Accept(connector);*/
+	if (codeftp == 226)
+	{
+		printf("%s", buf);
+		return true;
+	}
+	else
+	{
+		replylogcode(codeftp);
+		return false;
+	}
 }
 
 
@@ -266,40 +293,31 @@ bool Client::lsdir(const string cmd, const string path)
 	else
 		transferCMD("LIST", path);
 
-	/*memset(buf, 0, sizeof buf);
-	if (cmd == "ls")
+	if (mode == ACTIVE)
 	{
-		if (path == "")
-			sprintf(buf, "NLST \r\n");
-		else
-			sprintf(buf, "NLST %s \r\n", path.c_str());
+		dsocket.Accept(connector);
+
+		memset(buf, 0, sizeof buf);
+		while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
+		{
+			sscanf(buf, "%d", &codeftp);
+			printf("%s", buf);
+			memset(buf, 0, tmpres);
+		}
+
+		connector.Close();
 	}
-	else if (cmd == "dir")
+	else
 	{
-		if (path == "")
-			sprintf(buf, "LIST \r\n");
-		else
-			sprintf(buf, "LIST %s \r\n", path.c_str());
-	}
-
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-	memset(buf, 0, tmpres);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);*/
-
-	dsocket.Accept(connector);
-
-	memset(buf, 0, sizeof buf);
-	while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
-	{
-		sscanf(buf, "%d", &codeftp);
-		printf("%s", buf);
-		memset(buf, 0, tmpres);
+		memset(buf, 0, sizeof buf);
+		while ((tmpres = dsocket.Receive(buf, BUFSIZ, 0)) > 0)
+		{
+			sscanf(buf, "%d", &codeftp);
+			printf("%s", buf);
+			memset(buf, 0, tmpres);
+		}
 	}
 
-	connector.Close();
 	dsocket.Close();
 
 	return true;
@@ -315,54 +333,55 @@ bool Client::get(const string path)
 
 	transferInit(dsocket, path);
 
-	transferCMD("RETR", path);
-
-	/*memset(buf, 0, sizeof buf);
-	sprintf(buf, "RETR %s \r\n", path.c_str());
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);*/
-
-	dsocket.Accept(connector);
+	if (transferCMD("RETR", path) == false)
+		return false;
 
 	//Create file to write into
 	string filename = getFileName(path);
 	filename = "D:/" + filename;
 	ofstream downfile(filename, ios::binary);
 
-	memset(buf, 0, sizeof buf);
-	while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
+	if (mode == ACTIVE)
 	{
-		//sscanf(buf, "%d", &codeftp);
-		downfile.write(buf, sizeof buf);
-		memset(buf, 0, tmpres);
-	}
+		dsocket.Accept(connector);
 
-	downfile.close();
-	connector.Close();
-	dsocket.Close();
+		memset(buf, 0, sizeof buf);
+		while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
+		{
+			downfile.write(buf, sizeof buf);
+			memset(buf, 0, tmpres);
+		}
 
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	sscanf(buf, "%d", &codeftp);
-	if (codeftp == 200 || codeftp == 150 || codeftp == 226)
-	{
-		printf("%s", buf);
-		return true;
+		connector.Close();
 	}
 	else
 	{
-		replylogcode(codeftp);
-		return false;
+		memset(buf, 0, sizeof buf);
+		while ((tmpres = dsocket.Receive(buf, BUFSIZ, 0)) > 0)
+		{
+			downfile.write(buf, sizeof buf);
+			memset(buf, 0, tmpres);
+		}
 	}
+
+	downfile.close();
+	dsocket.Close();
+
+	return afterTransfer();
 }
 
 
 bool Client::put(const string path)
 {
+	//Create file to read
+	ifstream upfile(path, ios::binary);
+	//Check if file exists
+	if (upfile.good() == false)
+	{
+		cout << path << ": File not found\n";
+		return false;
+	}
+
 	int tmpres;
 	int codeftp;
 	int count;
@@ -373,47 +392,36 @@ bool Client::put(const string path)
 
 	string filename = getFileName(path);
 	transferCMD("STOR", filename);
-	/*memset(buf, 0, sizeof buf);
-	sprintf(buf, "STOR %s \r\n", filename.c_str());
-	tmpres = ClientSocket.Send(buf, strlen(buf), 0);
-
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	sscanf(buf, "%d", &codeftp);
-	printf("%s", buf);*/
-
-	dsocket.Accept(connector);
-
-	//Create file to read
-	ifstream upfile(path, ios::binary);
 
 	upfile.seekg(ios::beg);
-	do
+	if (mode == ACTIVE)
 	{
-		memset(buf, 0, sizeof buf);
-		upfile.read(buf, BUFSIZ);
-		count = upfile.gcount();
-		tmpres = connector.Send(buf, count, 0);
-		//sscanf(buf, "%d", &codeftp);
-	} while (!upfile.eof());
+		dsocket.Accept(connector);
+		do
+		{
+			memset(buf, 0, sizeof buf);
+			upfile.read(buf, BUFSIZ);
+			count = upfile.gcount();
+			tmpres = connector.Send(buf, count, 0);
+		} while (!upfile.eof());
 
-	upfile.close();
-	connector.Close();
-	dsocket.Close();
-
-	memset(buf, 0, sizeof buf);
-	tmpres = ClientSocket.Receive(buf, BUFSIZ, 0);
-	sscanf(buf, "%d", &codeftp);
-	if (codeftp == 200 || codeftp == 150 || codeftp == 226)
-	{
-		printf("%s", buf);
-		return true;
+		connector.Close();
 	}
 	else
 	{
-		replylogcode(codeftp);
-		return false;
+		do
+		{
+			memset(buf, 0, sizeof buf);
+			upfile.read(buf, BUFSIZ);
+			count = upfile.gcount();
+			tmpres = dsocket.Send(buf, count, 0);
+		} while (!upfile.eof());
 	}
+
+	upfile.close();
+	dsocket.Close();
+
+	return afterTransfer();
 }
 
 
@@ -425,7 +433,7 @@ bool Client::mget(const string pathRAW)
 
 	string ucmd;
 
-	transferCMD("TYPE", "I");
+	//transferCMD("TYPE", "I");
 
 	for (int i = 0; i < paths.size(); i++)
 	{
@@ -441,11 +449,107 @@ bool Client::mget(const string pathRAW)
 }
 
 
+bool Client::mput(const string pathRAW)
+{
+	istringstream iss(pathRAW);
+	vector<string>paths((istream_iterator<string>(iss)), istream_iterator<string>());
+	//REF: https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
+
+	string ucmd;
+
+	//transferCMD("TYPE", "I");
+
+	for (int i = 0; i < paths.size(); i++)
+	{
+		printf("mput %s? ", paths[i].c_str());
+		rewind(stdin);
+		getline(cin, ucmd);
+
+		if (ucmd == "" || ucmd == "Y" || ucmd == "y")
+			put(paths[i]);
+	}
+
+	return true;
+}
+
+
+bool Client::del(const string path)
+{
+	transferCMD("DELE", path);
+
+	return true;
+}
+
+
+bool Client::pwd()
+{
+	transferCMD("PWD", "");
+
+	return true;
+}
+
+
+bool Client::cd(const string path)
+{
+	transferCMD("CWD", path);
+
+	return true;
+}
+
+bool Client::lcd(const string path)
+{
+	TCHAR buf[2048];
+	DWORD dwRet;
+	wstring w_path(path.begin(), path.end());
+	LPCTSTR dir = w_path.c_str();
+
+	if (!SetCurrentDirectory(dir))
+	{
+		cout << path << " not found\n";
+		return false;
+	}
+
+	memset(buf, 0, sizeof buf);
+	dwRet = GetCurrentDirectory(BUFSIZ, buf);
+
+	if (dwRet == 0)
+	{
+		printf("GetCurrentDirectory failed (%d)\n", GetLastError());
+		return false;
+	}
+	if (dwRet > BUFSIZ)
+	{
+		printf("Buffer too small; need %d characters\n", dwRet);
+		return false;
+	}
+
+	printf("%s", buf);
+
+	return true;
+}
+
+
+bool Client::rmdir(const string path)
+{
+	transferCMD("RMD", path);
+
+	return true;
+}
+
+
+bool Client::quitexit()
+{
+	transferCMD("QUIT", "");
+
+	return false;
+}
+
+
 void replylogcode(int code)
 {
 	switch (code) {
-	case 200:
-		printf("Command okay.");
+	case 451:
+		printf("Can't remove directory");
 		break;
 	case 500:
 		printf("Syntax error, command unrecognized.\n");
