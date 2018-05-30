@@ -70,10 +70,14 @@ bool Client::command(const string cmd, const string path)
 		cd(path);
 	else if (cmd == "lcd")
 		lcd(path);
+	else if (cmd == "mkdir")
+		mkdir(path);
 	else if (cmd == "rmdir")
 		rmdir(path);
 	else if (cmd == "quit" || cmd == "exit" || cmd == "close")
 		return quitexit();
+	else if (cmd == "?" || cmd == "help")
+		help();
 	else if (cmd == "")
 		return true;
 	else
@@ -199,7 +203,7 @@ void Client::changeMode(const string path)
 }
 
 
-void Client::transferInit(CSocket &dsocket, const string path)
+void Client::transferInit(CSocket & dsocket, CSocket & connector)
 {
 	int tmpres;
 	int codeftp;
@@ -260,8 +264,8 @@ void Client::transferInit(CSocket &dsocket, const string path)
 			serverDataPort = p1 * 256 + p2;
 
 			LPCTSTR hostIP = hostIPaddr.c_str();
-			dsocket.Create();
-			dsocket.Connect(hostIP, serverDataPort);
+			connector.Create();
+			connector.Connect(hostIP, serverDataPort);
 		}
 	}
 }
@@ -296,7 +300,7 @@ bool Client::lsdir(const string cmd, const string path)
 	CSocket dsocket, connector;
 	char buf[BUFSIZ + 1];
 
-	transferInit(dsocket, path);
+	transferInit(dsocket, connector);
 
 	if (cmd == "ls")
 		transferCMD("NLST", path);
@@ -304,30 +308,16 @@ bool Client::lsdir(const string cmd, const string path)
 		transferCMD("LIST", path);
 
 	if (mode == ACTIVE)
-	{
 		dsocket.Accept(connector);
 
-		memset(buf, 0, sizeof buf);
-		while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
-		{
-			sscanf(buf, "%d", &codeftp);
-			printf("%s", buf);
-			memset(buf, 0, tmpres);
-		}
-
-		connector.Close();
-	}
-	else
+	memset(buf, 0, sizeof buf);
+	while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
 	{
-		memset(buf, 0, sizeof buf);
-		while ((tmpres = dsocket.Receive(buf, BUFSIZ, 0)) > 0)
-		{
-			sscanf(buf, "%d", &codeftp);
-			printf("%s", buf);
-			memset(buf, 0, tmpres);
-		}
+		printf("%s", buf);
+		memset(buf, 0, tmpres);
 	}
 
+	connector.Close();
 	dsocket.Close();
 
 	return afterTransfer();
@@ -341,40 +331,27 @@ bool Client::get(const string path)
 	CSocket dsocket, connector;
 	char buf[BUFSIZ];
 
-	transferInit(dsocket, path);
+	transferInit(dsocket, connector);
 
 	if (transferCMD("RETR", path) == false)
 		return false;
 
 	//Create file to write into
 	string filename = getFileName(path);
-	//filename = "D:/" + filename;
 	ofstream downfile(filename, ios::binary);
 
 	if (mode == ACTIVE)
-	{
 		dsocket.Accept(connector);
 
-		memset(buf, 0, sizeof buf);
-		while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
-		{
-			downfile.write(buf, tmpres);
-			memset(buf, 0, tmpres);
-		}
-
-		connector.Close();
-	}
-	else
+	memset(buf, 0, sizeof buf);
+	while ((tmpres = connector.Receive(buf, BUFSIZ, 0)) > 0)
 	{
-		memset(buf, 0, sizeof buf);
-		while ((tmpres = dsocket.Receive(buf, BUFSIZ, 0)) > 0)
-		{
-			downfile.write(buf, sizeof buf);
-			memset(buf, 0, tmpres);
-		}
+		downfile.write(buf, tmpres);
+		memset(buf, 0, tmpres);
 	}
 
 	downfile.close();
+	connector.Close();
 	dsocket.Close();
 
 	return afterTransfer();
@@ -388,8 +365,7 @@ bool Client::put(const string path)
 	if (t_path[0] == 34) //"
 	{
 		t_path.erase(0, 1);
-		int lenPath = t_path.length();
-		t_path.erase(lenPath - 1, lenPath);
+		t_path.pop_back();
 	}
 
 	//Create file to read
@@ -407,37 +383,25 @@ bool Client::put(const string path)
 	CSocket dsocket, connector;
 	char buf[BUFSIZ];
 
-	transferInit(dsocket, path);
+	transferInit(dsocket, connector);
 
 	string filename = getFileName(path);
 	transferCMD("STOR", filename);
 
-	upfile.seekg(ios::beg);
 	if (mode == ACTIVE)
-	{
 		dsocket.Accept(connector);
-		do
-		{
-			memset(buf, 0, sizeof buf);
-			upfile.read(buf, BUFSIZ);
-			count = upfile.gcount();
-			tmpres = connector.Send(buf, count, 0);
-		} while (!upfile.eof());
 
-		connector.Close();
-	}
-	else
+	upfile.seekg(ios::beg);
+	do
 	{
-		do
-		{
-			memset(buf, 0, sizeof buf);
-			upfile.read(buf, BUFSIZ);
-			count = upfile.gcount();
-			tmpres = dsocket.Send(buf, count, 0);
-		} while (!upfile.eof());
-	}
+		memset(buf, 0, sizeof buf);
+		upfile.read(buf, BUFSIZ);
+		count = upfile.gcount();
+		tmpres = connector.Send(buf, count, 0);
+	} while (!upfile.eof());
 
 	upfile.close();
+	connector.Close();
 	dsocket.Close();
 
 	return afterTransfer();
@@ -532,20 +496,33 @@ bool Client::cd(const string path)
 	return true;
 }
 
+
+//REF: https://msdn.microsoft.com/en-us/library/windows/desktop/aa363806%28v=vs.85%29.aspx
 bool Client::lcd(const string path)
 {
-	TCHAR buf[2048];
 	DWORD dwRet;
-	wstring w_path(path.begin(), path.end());
-	LPCTSTR dir = w_path.c_str();
+	TCHAR buf[1024];
+	int error;
 
-	if (!SetCurrentDirectory(dir))
+	if (path != "")
 	{
-		cout << path << " not found\n";
-		return false;
+		TCHAR *param = new TCHAR[path.size() + 1];
+		param[path.size()] = 0;
+		copy(path.begin(), path.end(), param);
+
+		if (!SetCurrentDirectory(param))
+		{
+			error = GetLastError();
+
+			if (error == 2)
+				cout << path.substr(path.find(":") + 1) << ": File not found\n";
+			else if (error == 3)
+				cout << "> " << path.substr(0, 2) << "No Such file or directory\n";
+			//printf("SetCurrentDirectory failed (%d)\n", GetLastError());
+			return false;
+		}
 	}
 
-	memset(buf, 0, sizeof buf);
 	dwRet = GetCurrentDirectory(BUFSIZ, buf);
 
 	if (dwRet == 0)
@@ -559,7 +536,15 @@ bool Client::lcd(const string path)
 		return false;
 	}
 
-	printf("%s", buf);
+	_tprintf(TEXT("Local directory now %s.\n"), buf);
+
+	return true;
+}
+
+
+bool Client::mkdir(const string path)
+{
+	transferCMD("MKD", path);
 
 	return true;
 }
@@ -648,8 +633,20 @@ void splitPaths(string pathRAW, vector<string>& paths)
 		else
 		{
 			pos = pathRAW.find(" ", i);
-			paths.push_back(pathRAW.substr(i, pos - i - 1));
+			paths.push_back(pathRAW.substr(i, pos - i));
 			i = pos + 1;
 		}
 	}
+}
+
+
+void help()
+{
+	cout << "Commands may be abbreviated. Commands are:\n";
+	cout << "ls\t\tdir\n";
+	cout << "put\t\tget\t\tmput\t\tmget\n";
+	cout << "delete\t\tmdelete\t\tmkdir\t\trmdir\n";
+	cout << "pwd\t\tcd\t\tlcd\n";
+	cout << "quit\t\tclose\t\t\exit\n";
+	cout << "?\t\thelp\t\tquote\n";
 }
