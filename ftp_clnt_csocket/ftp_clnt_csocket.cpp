@@ -1,25 +1,6 @@
-// ftp_clnt_csocket.cpp : Defines the entry point for the console application.
-//
-
 #include "stdafx.h"
 #include "Client.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
-
-// The one and only application object
-
-CWinApp theApp;
-
-using namespace std;
-
-char* sendCommand(char str[100])
-{
-	//sprintf(buf,"USER %s\r\n",info);
-	return NULL;
-}
 
 int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 {
@@ -29,17 +10,15 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 
 	if (hModule != NULL)
 	{
-		// initialize MFC and print and error on failure
+		//Initialize MFC and print and error on failure
 		if (!AfxWinInit(hModule, NULL, ::GetCommandLine(), 0))
 		{
-			// TODO: change error code to suit your needs
 			_tprintf(_T("Fatal Error: MFC initialization failed\n"));
 			nRetCode = 1;
 		}
 		else
 		{
-			// TODO: code your application's behavior here.
-			// Khoi tao thu vien Socket
+			//Initialize Socket library
 			if (AfxSocketInit() == FALSE)
 			{
 				cout << "Can't initialize Socket Libraray\n";
@@ -52,7 +31,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 	}
 	else
 	{
-		// TODO: change error code to suit your needs
 		_tprintf(_T("Fatal Error: GetModuleHandle failed\n"));
 		nRetCode = 1;
 	}

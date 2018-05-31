@@ -77,7 +77,7 @@ bool Client::command(const string cmd, const string path)
 	else if (cmd == "rmdir")
 		rmdir(path);
 	else if (cmd == "quit" || cmd == "exit" || cmd == "close")
-		return quitexit();
+		return quit();
 	else if (cmd == "?" || cmd == "help")
 		help();
 	else if (cmd == "")
@@ -186,6 +186,7 @@ bool Client::login(string host)
 
 	//Send Password
 	//Set console mode to hide password input
+	//REF: https://docs.microsoft.com/en-us/windows/console/setconsolemode
 	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD mode = 0;
 	GetConsoleMode(hStdin, &mode);
@@ -605,7 +606,7 @@ bool Client::disconnect()
 }
 
 
-bool Client::quitexit()
+bool Client::quit()
 {
 	transferCMD("QUIT", "");
 

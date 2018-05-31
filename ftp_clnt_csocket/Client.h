@@ -36,5 +36,5 @@ public:
 	bool mkdir(const string path);
 	bool rmdir(const string path);
 	bool disconnect();
-	bool quitexit();
+	bool quit();
 };
