@@ -1,8 +1,3 @@
-// stdafx.h : include file for standard system include files,
-// or project specific include files that are used frequently, but
-// are changed infrequently
-//
-
 #pragma once
 
 #include <stdio.h>
@@ -37,4 +32,7 @@ using namespace std;
 #include <istream>
 #include <iterator>
 
-// TODO: reference additional headers your program requires here
+void replylogcode(int code);
+string getFileName(string path);
+void splitPaths(string pathRAW, vector<string>& paths);
+void help();

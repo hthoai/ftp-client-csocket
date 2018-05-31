@@ -22,7 +22,7 @@ public:
 	bool login(string host);
 	void changeMode(const string path);
 	void transferInit(CSocket & dsocket, CSocket & connector);
-	bool afterTransfer();
+	bool afterTransfer(const int size, const double time_used);
 	bool lsdir(const string cmd, const string path);
 	bool get(const string path);
 	bool put(const string path);
@@ -35,10 +35,6 @@ public:
 	bool lcd(const string path);
 	bool mkdir(const string path);
 	bool rmdir(const string path);
+	bool disconnect();
 	bool quitexit();
 };
-
-void replylogcode(int code);
-string getFileName(string path);
-void splitPaths(string pathRAW, vector<string>& paths);
-void help();
