@@ -3,6 +3,8 @@
 
 #define ACTIVE 0
 #define PASSIVE 1
+#define DOWNLOAD 0
+#define UPLOAD 1
 
 class Client
 {
@@ -11,18 +13,21 @@ class Client
 	unsigned int clientPort;
 	unsigned int clientDataPort;
 	bool mode;
+	bool s_disconnect;
 public:
 	Client();
 	~Client();
 
-	void play();
+	bool getDisconnectStt();
+	void setDisconnect();
 	bool command(const string cmd, const string path);
 	bool transferCMD(const string cmd, const string infor);
 	bool connect(wstring host, unsigned int port);
+	bool user(const string cmd, string username);
 	bool login(string host);
 	void changeMode(const string path);
 	void transferInit(CSocket & dsocket, CSocket & connector);
-	bool afterTransfer(const int size, const double time_used);
+	bool afterTransfer(int size, double time_used, bool type);
 	bool lsdir(const string cmd, const string path);
 	bool get(const string path);
 	bool put(const string path);

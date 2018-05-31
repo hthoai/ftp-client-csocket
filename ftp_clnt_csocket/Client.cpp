@@ -8,6 +8,7 @@ Client::Client()
 	srand(time(NULL));
 	clientDataPort = rand() % 40000 + 1024;
 	mode = ACTIVE;
+	s_disconnect = false;
 }
 
 
@@ -17,28 +18,15 @@ Client::~Client()
 }
 
 
-void Client::play()
+bool Client::getDisconnectStt()
 {
-	string input, cmd, path;
+	return s_disconnect;
+}
 
-	while (true)
-	{
-		if (mode == ACTIVE)
-			cout << "ftp> ";
-		else
-			cout << "ftp-pasv> ";
-		rewind(stdin);
-		getline(cin, input);
 
-		cmd = input.substr(0, input.find(" "));
-		path = input.substr(input.find(" ") + 1);
-		if (cmd.length() == input.length())
-			path = "";
-
-		if (command(cmd, path) == false)
-			break;
-
-	}
+void Client::setDisconnect()
+{
+	s_disconnect = true;
 }
 
 
@@ -46,8 +34,10 @@ bool Client::command(const string cmd, const string path)
 {
 	if (cmd == "open")
 		login(path); //host
+	else if (cmd == "user")
+		user(cmd, path);
 	else if (cmd == "disconnect")
-		disconnect();
+		return disconnect();
 	else if (cmd == "quote")
 		changeMode(path);
 	else if (cmd == "ls")
@@ -144,6 +134,32 @@ bool Client::connect(wstring host, unsigned int port)
 }
 
 
+bool Client::user(const string cmd, string username)
+{
+	transferCMD(cmd, username);
+
+	//Send Password
+	//Set console mode to hide password input
+	//REF: https://docs.microsoft.com/en-us/windows/console/setconsolemode
+	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+	DWORD mode = 0;
+	GetConsoleMode(hStdin, &mode);
+	SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
+
+	char buf[BUFSIZ + 1];
+	char info[50];
+
+	memset(info, 0, sizeof info);
+	printf("Password: ");
+	memset(buf, 0, sizeof buf);
+	scanf("%s", info);
+
+	SetConsoleMode(hStdin, mode);
+
+	return transferCMD("PASS", info);
+}
+
+
 bool Client::login(string host)
 {
 	wstring w_host(host.begin(), host.end());
@@ -182,37 +198,24 @@ bool Client::login(string host)
 	memset(buf, 0, sizeof buf);
 	scanf("%s", info);
 
-	transferCMD("USER", info);
-
-	//Send Password
-	//Set console mode to hide password input
-	//REF: https://docs.microsoft.com/en-us/windows/console/setconsolemode
-	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-	DWORD mode = 0;
-	GetConsoleMode(hStdin, &mode);
-	SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
-
-	memset(info, 0, sizeof info);
-	printf("Password: ");
-	memset(buf, 0, sizeof buf);
-	scanf("%s", info);
-
-	SetConsoleMode(hStdin, mode);
-
-	transferCMD("PASS", info);
-
-	return true;
+	return user("USER", info);
 }
 
 
 void Client::changeMode(const string path)
 {
 	if (path == "pasv")
+	{
 		mode = PASSIVE;
+		cout << "Passive mode is on.\n";
+	}
 	else if (path == "acti")
+	{
 		mode = ACTIVE;
+		cout << "Passive mode is off.\n";
+	}
 	else
-		printf("Syntax error.\n");
+		printf("Syntax error. Use 'pasv' or 'acti'.\n");
 }
 
 
@@ -284,7 +287,7 @@ void Client::transferInit(CSocket & dsocket, CSocket & connector)
 }
 
 
-bool Client::afterTransfer(const int size, const double time_used)
+bool Client::afterTransfer(int size, double time_used, bool type)
 {
 	int tmpres;
 	int codeftp;
@@ -296,8 +299,19 @@ bool Client::afterTransfer(const int size, const double time_used)
 	if (codeftp == 226)
 	{
 		printf("%s", buf);
-		printf("ftp: %d bytes received in %.4fSeconds ", size, time_used);
-		printf("%.2fKbytes/sec.\n", (size*1.0 / 1024) / time_used);
+		memset(buf, 0, tmpres);
+
+		if (size != 0)
+		{
+			if (type == DOWNLOAD)
+				strcpy(buf, "received");
+			else
+				strcpy(buf, "sent");
+
+			printf("ftp: %d bytes %s in %.2fSeconds ", size, buf, time_used);
+			printf("%.2fKbytes/sec.\n", (size*1.0 / 1024) / time_used);
+		}
+
 		return true;
 	}
 	else
@@ -317,7 +331,6 @@ bool Client::lsdir(const string cmd, const string path)
 	int size = 0;
 	double time_used;
 	clock_t begin, end;
-	//REF: http://eitguide.net/cach-do-thoi-gian-thuc-thi-cua-mot-function-trong-cc/
 
 	transferInit(dsocket, connector);
 
@@ -338,13 +351,13 @@ bool Client::lsdir(const string cmd, const string path)
 		size += tmpres;
 	}
 
-	end = clock() + 1;
+	end = clock() + 10;
 	time_used = ((double)(end - begin)) / CLOCKS_PER_SEC;
 
 	connector.Close();
 	dsocket.Close();
 
-	return afterTransfer(size, time_used);
+	return afterTransfer(size, time_used, DOWNLOAD);
 }
 
 
@@ -379,14 +392,14 @@ bool Client::get(const string path)
 		size += tmpres;
 	}
 
-	end = clock() + 1;
+	end = clock() + 10;
 	time_used = ((double)(end - begin)) / CLOCKS_PER_SEC;
 
 	downfile.close();
 	connector.Close();
 	dsocket.Close();
 
-	return afterTransfer(size, time_used);
+	return afterTransfer(size, time_used, DOWNLOAD);
 }
 
 
@@ -437,14 +450,14 @@ bool Client::put(const string path)
 		size += count;
 	} while (!upfile.eof());
 
-	end = clock() + 1;
+	end = clock() + 10;
 	time_used = ((double)(end - begin)) / CLOCKS_PER_SEC;
 
 	upfile.close();
 	connector.Close();
 	dsocket.Close();
 
-	return afterTransfer(size, time_used);
+	return afterTransfer(size, time_used, UPLOAD);
 }
 
 
@@ -601,14 +614,15 @@ bool Client::rmdir(const string path)
 bool Client::disconnect()
 {
 	transferCMD("QUIT", "");
-
-	return true;
+	setDisconnect();
+	return false;
 }
 
 
 bool Client::quit()
 {
-	transferCMD("QUIT", "");
+	if (getDisconnectStt() == true)
+		transferCMD("QUIT", "");
 
 	return false;
 }
